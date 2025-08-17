@@ -1,0 +1,38 @@
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-test-image:
+    # ... как уже есть
+
+  release-image:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write     # нужно для ghcr
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Docker login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/val-api:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}/val-api:latest

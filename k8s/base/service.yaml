@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: val-api
+spec:
+  selector: { app: val-api }
+  ports:
+    - name: http
+      port: 80
+      targetPort: 3000
+  type: ClusterIP
