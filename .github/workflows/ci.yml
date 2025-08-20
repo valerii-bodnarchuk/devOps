@@ -1,38 +1,85 @@
+name: CI
+
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
-  push:
     tags:
       - 'v*.*.*'
+  pull_request:
+    branches: [main]
 
 jobs:
-  build-test-image:
-    # ... как уже есть
-
-  release-image:
-    if: startsWith(github.ref, 'refs/tags/')
+  build-test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write     # нужно для ghcr
+    strategy:
+      matrix:
+        node: [18, 20]   # тестим две LTS версии Node
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Test
+        run: npm test --if-present
+
+      - name: Build
+        run: npm run build --if-present
+
+  docker-image:
+    runs-on: ubuntu-latest
+    needs: build-test
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Docker login GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build & push
+
+      - name: Build & Push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
           push: true
+          platforms: linux/amd64
           tags: |
             ghcr.io/${{ github.repository }}/val-api:${{ github.ref_name }}
             ghcr.io/${{ github.repository }}/val-api:latest
+
+      - name: Security Scan (Trivy)
+        uses: aquasecurity/trivy-action@0.22.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/val-api:${{ github.ref_name }}
+          format: table
+          output: trivy-report.txt
+
+      - name: Generate SBOM (Syft)
+        uses: anchore/syft-action@v0.15.0
+        with:
+          image: ghcr.io/${{ github.repository }}/val-api:${{ github.ref_name }}
+          format: spdx-json
+          output: sbom.json
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            trivy-report.txt
+            sbom.json
