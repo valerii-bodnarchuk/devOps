@@ -1,0 +1,27 @@
+# глобально для всех пакетов
+node_modules/
+dist/
+build/
+.cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env файлы
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# не игнорим lock-файлы!
+!package-lock.json
+!yarn.lock
+!pnpm-lock.yaml
