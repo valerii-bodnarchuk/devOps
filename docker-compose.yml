@@ -1,13 +1,49 @@
+networks:
+  appnet:
+
+volumes:
+  pgdata:
+
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks: [appnet]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks: [appnet]
+
   api:
+    # твой Dockerfile в корне, собираем локально
     build: .
     image: val-api:dev
     ports: ["3000:3000"]
     environment:
       NODE_ENV: production
       PORT: 3000
-      # DB_URL: postgres://postgres:postgres@db:5432/app
-      # REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgres://postgres:postgres@db:5432/app
+      REDIS_URL: redis://redis:6379
     depends_on:
       db:
         condition: service_healthy
@@ -28,42 +64,16 @@ services:
           cpus: "0.25"
           memory: "256M"
     restart: unless-stopped
+    networks: [appnet]
 
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: app
-    volumes:
-      - dbdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d app"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 10s
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: "512M"
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 2s
-      retries: 5
-      start_period: 5s
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: "256M"
-    restart: unless-stopped
-
-volumes:
-  dbdata: {}
+  migrate:
+    # одноразовая миграция БД — выполнится и завершится
+    image: val-api:dev
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [appnet]
+    entrypoint: ["node", "dist/migrate.js"]
+    restart: "no"
+    # по желанию запускать вручную через профиль:
+    # profiles: ["migrate"]
